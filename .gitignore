@@ -41,6 +41,6 @@ merge_AP.py
 merge_RV.py
 sales_estimation_model.py
 test_model.py
-*.txt
+notes.txt
 data/
 data2/
