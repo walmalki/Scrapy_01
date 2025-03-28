@@ -1,6 +1,6 @@
 import scrapy
-from scrapy.crawler import CrawlerProcess
 from selenium import webdriver
+from scrapy.crawler import CrawlerProcess
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -10,14 +10,12 @@ import json
 import os
 import re
 import random
-import time
 import requests
 
 # Specify ASINs to scrape directly (Prioritized)
 specific_asins = []  # If empty, the script will load ASINs from the input file
 
 # Define other configurations
-base_url = "https://www.amazon.sa/dp/"
 INPUT_FILE = "data/amz_asin.jsonl"  # JSONLines format
 MAX_PRODUCTS = 2000
 OUTPUT_DIR = "data"
@@ -91,8 +89,6 @@ else:
 class AmazonProductsSpider(scrapy.Spider):
     name = "amz_products"
 
-    # Define the allowed domains
-    allowed_domains = ["amazon.sa"]
     # Custom settings for the spider
     custom_settings = {
         'LOG_LEVEL': 'INFO',
@@ -237,6 +233,7 @@ class AmazonProductsSpider(scrapy.Spider):
     # function to start scraping
     def start_requests(self):
         """Start scraping process. No duplicate prompt for continuing from the last stop."""
+        base_url = "https://www.amazon.sa/dp/"
 
         # If no ASINs to scrape, log an error and exit early
         if not self.asins_to_scrape:

@@ -190,10 +190,13 @@ class AmzReviewsSpider(scrapy.Spider):
                     ap_serial = record.get("serial_number", "").replace("ASN", "AP")
                     records.append({"asin": record["asin"], "AP_serial_number": ap_serial})
 
+            # ✅ Ask if the user wants to filter by serial number range
             use_range = input("Do you want to filter by serial number range? (yes/no): ").strip().lower()
+
             if use_range == "yes":
                 start_sn = input("Enter start serial number (e.g., ASN50): ").strip()
                 end_sn = input("Enter end serial number (e.g., ASN100): ").strip()
+
                 if start_sn in serial_numbers and end_sn in serial_numbers:
                     start_idx = serial_numbers.index(start_sn)
                     end_idx = serial_numbers.index(end_sn)
@@ -201,25 +204,32 @@ class AmzReviewsSpider(scrapy.Spider):
                     self.logger.info(f"🌚 Filtered ASINs from serial {start_sn} to {end_sn}")
                 else:
                     self.logger.warning("⚠️ Invalid serial number range provided. Using all ASINs.")
+
             else:
+                # ✅ Ask if the user wants to continue from the last stop
                 choice = input("Do you want to continue from the last stop? (yes/no): ").strip().lower()
                 if choice == "yes":
                     last_serial_number = self._get_last_serial_number(log_message=False)
+
                     if last_serial_number > 0:
                         last_serial_formatted = f"ASN{last_serial_number}"
+                        
                         if last_serial_formatted in serial_numbers:
                             last_serial_index = serial_numbers.index(last_serial_formatted)
-                            records = records[last_serial_index + 1:]
+                            records = records[last_serial_index + 1:]   # ✅ Resume from the next ASIN
                             self.logger.info(f"🚣 Resuming from serial number {last_serial_formatted}")
                         else:
                             self.logger.warning(f"☢️ Could not find {last_serial_formatted} in the input file. Starting from beginning.")
+
             if not records:
                 self.logger.error("⚠️ No ASINs found to scrape. Exiting...")
-                exit(1)
+                exit(1) # ✅ Exit gracefully if no ASINs are found
+
             return records
+        
         except (FileNotFoundError, json.JSONDecodeError) as e:
             self.logger.error(f"⚠️ Error loading ASINs: {e}")
-            exit(1)
+            exit(1) # ✅ Exit if an error occurs
 
     # Function to generate a unique output filename
     def _generate_output_filename(self):
