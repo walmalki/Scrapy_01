@@ -14,7 +14,7 @@ import time
 import requests
 
 # Specify ASINs to scrape directly (Prioritized)
-specific_asins = ["B0CYKXFTVV"]  # If empty, the script will load ASINs from the input file
+specific_asins = []  # If empty, the script will load ASINs from the input file
 
 # Define other configurations
 base_url = "https://www.amazon.sa/dp/"
