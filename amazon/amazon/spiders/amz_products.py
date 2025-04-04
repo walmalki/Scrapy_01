@@ -388,6 +388,48 @@ class AmazonProductsSpider(scrapy.Spider):
             self.logger.info(f"🔗 Extracted sold_by_link: {sold_by_link}")
             self.logger.info(f"🆔 Extracted seller_id: {seller_id}")
 
+            # Extract number of sellers
+            try:
+                sellers_text = response.css('span.a-color-base:contains("New")::text').get()
+
+                if sellers_text:
+                    # Using regex to extract the number from the "New (X) from" text
+                    sellers_match = re.search(r"New \((\d+)\) from", sellers_text)
+                    if sellers_match:
+                        num_sellers = sellers_match.group(1)
+                    else:
+                        num_sellers = "1"  # If regex doesn't find a match, assume only 1 seller
+                else:
+                    num_sellers = "1"  # Default to 1 seller if no match found
+
+                # Log the number of sellers
+                self.logger.info(f"🛒 Extracted number of sellers: {num_sellers}")
+            except Exception as e:
+                self.logger.error(f"⚠️ Error extracting number of sellers: {e}")
+                num_sellers = "1"  # Default to 1 if there's an error
+
+            # Add the number of sellers to the product details
+            product_details["Sellers"] = num_sellers
+
+            # Extract "Fulfilled by" information
+            try:
+                fulfilled_by_text = response.css('span.offer-display-feature-text-message::text').get()
+
+                if fulfilled_by_text:
+                    fulfilled_by = fulfilled_by_text.strip()  # Clean up extra spaces if any
+                else:
+                    fulfilled_by = "N/A"  # Default value if nothing is found
+
+                # Log the extracted "Fulfilled by"
+                self.logger.info(f"📦 Extracted fulfilled by: {fulfilled_by}")
+
+            except Exception as e:
+                self.logger.error(f"⚠️ Error extracting Fulfilled by: {e}")
+                fulfilled_by = "N/A"  # Default value in case of an error
+
+            # Add the Fulfilled by data to the product details
+            product_details["Fulfilled_by"] = fulfilled_by
+
             # Extract and clean brand name
             try:
                 raw_brand = response.css("a#bylineInfo::text").get(default="").strip()
@@ -400,6 +442,28 @@ class AmazonProductsSpider(scrapy.Spider):
 
             except Exception as e:
                 self.logger.error(f"⚠️ Error extracting brand: {e}")
+
+            # After extracting sold_by and fulfilled_by
+            try:
+                # Logic for determining fulfillment type
+                if sold_by != "Amazon" and fulfilled_by == "Amazon":
+                    fulfillment_type = "FBA"  # Fulfilled by Amazon, sold by a third party
+                elif sold_by == "Amazon" and fulfilled_by == "Amazon":
+                    fulfillment_type = "AMZ"  # Sold and fulfilled by Amazon
+                elif sold_by != "Amazon" and fulfilled_by == sold_by:
+                    fulfillment_type = "FBM"  # Fulfilled and sold by the same third-party seller
+                else:
+                    fulfillment_type = "N/A"  # Default value if no matching condition
+
+                # Log the determined fulfillment type
+                self.logger.info(f"🚚 Fulfillment Type: {fulfillment_type}")
+
+            except Exception as e:
+                self.logger.error(f"⚠️ Error determining fulfillment type: {e}")
+                fulfillment_type = "N/A"  # Default value in case of an error
+
+            # Add the fulfillment_type data to the product details
+            product_details["fulfillment_type"] = fulfillment_type
 
             # Extract bought_in_past_month and clean the text
             try:
@@ -432,14 +496,14 @@ class AmazonProductsSpider(scrapy.Spider):
             self.logger.info(f"💹 Extracted Total Rating: {total_rating}")
 
             # Log the extracted Availability
-            self.logger.info(f"ℹ️ Extracted availability: {availability}")
+            self.logger.info(f"📦 Extracted availability: {availability}")
             
             # Refresh Selenium Driver for each ASIN
             self.driver.get(response.url)
 
             try:
                 # Wait for the Best Sellers Rank section to load
-                WebDriverWait(self.driver, 20).until(
+                WebDriverWait(self.driver, 30).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, "#productDetails_detailBullets_sections1, #detailBulletsWrapper_feature_div"))
                 )
                 self.logger.info("😯 Best Sellers Rank section loaded.")
@@ -594,6 +658,78 @@ class AmazonProductsSpider(scrapy.Spider):
             limited_time_deal = "YES" if response.css("#dealBadgeSupportingText span::text").get() else "NO"
             self.logger.info(f"🙉 Extracted Limited Time Deal: {limited_time_deal}")
 
+            # Extract product weight and dimensions from different structures
+            try:
+                dimensions = "N/A"
+                weight = "N/A"
+
+                # List of CSS selectors to try extracting dimensions and weight
+                selectors = [
+                    "#productDetails_techSpec_section_1 tr:contains('Package Dimensions') td::text",  # Tech spec section
+                    "#productDetails_techSpec_section_1 td.prodDetAttrValue:contains('Package Dimensions')::text",  # Tech spec section
+                    "#productDetails_techSpec_section_1 tr:contains('Product Dimensions') td::text",  # Tech spec section
+                    "#detailBulletsWrapper_feature_div tr:contains('Package Dimensions') td::text",  # Product details section
+                    "#detailBulletsWrapper_feature_div tr:contains('Product Dimensions') td::text",  # Product details section
+                    "#detailBullets_feature_div li:contains('Package Dimensions') span::text",  # Bullet list section
+                    "#detailBullets_feature_div li:contains('Product Dimensions') span::text",  # Bullet list section
+                    "#detailBullets_feature_div li:contains('Dimensions') span::text",  # Bullet list section
+                    "#productDetails_detailBullets_sections1 tr:contains('Dimensions') td::text",  # Another product details section
+                    "#productDescription span:contains('Net Weight:') + span::text",  # Description section for Net Weight
+                    "#productDescription span:contains('Net Weight:')::text",  # Description section for Net Weight
+                    "li:nth-child(1) .a-text-bold+ span::text",
+                    "li:nth-child(2) .a-text-bold+ span::text",
+                    "li:nth-child(3) .a-text-bold+ span::text",
+                    "li:nth-child(4) .a-text-bold+ span::text",
+                    "li:nth-child(5) .a-text-bold+ span::text",
+                    "li:nth-child(6) .a-text-bold+ span::text",
+                ]
+
+                # Loop through selectors to find the dimensions and weight
+                for selector in selectors:
+                    dimensions_weight_row = response.css(selector).get()
+
+                    if dimensions_weight_row:
+                        dimensions_weight_row = dimensions_weight_row.strip()
+
+                        # Log the selector being inspected
+                        self.logger.info(f"Inspecting selector: {selector}")
+
+                        # Check if the row contains dimensions and weight
+                        if "g" in dimensions_weight_row and "cm" in dimensions_weight_row:
+                            # Split by semicolon to separate dimensions and weight
+                            dimensions_weight_split = dimensions_weight_row.split(';')
+
+                            # Extract weight
+                            weight = dimensions_weight_split[1].strip().replace('g', '').replace(' ', '').replace('\u200e', '') if len(dimensions_weight_split) > 1 else "N/A"
+                            
+                            # Extract dimensions
+                            dimensions = dimensions_weight_split[0].strip().replace('cm', '').replace('\u200e', '').replace('x', 'x').strip() if len(dimensions_weight_split) > 0 else "N/A"
+                            
+                            # Format dimensions as "L x W x H"
+                            dimension_parts = dimensions.split(" x ")
+                            if len(dimension_parts) == 3:  # If we have exactly 3 parts
+                                dimensions = f"{dimension_parts[0]}L x {dimension_parts[1]}W x {dimension_parts[2]}H"
+
+                            # Log the extracted dimensions and weight
+                            self.logger.info(f"📏 Extracted Dimensions: {dimensions}")
+                            self.logger.info(f"⚖️ Extracted Weight: {weight}")
+                            break  # Stop once the data is found
+
+                # If no dimensions and weight are found, log warnings
+                if dimensions == "N/A" or weight == "N/A":
+                    self.logger.warning("⚠️ No dimensions or weight found.")
+
+            except Exception as e:
+                self.logger.error(f"⚠️ Error extracting dimensions and weight: {e}")
+                dimensions = "N/A"
+                weight = "N/A"
+
+            # Extracting Item Model Number
+            model_number = response.css("th:contains('Item model number') + td::text").get(default="N/A").strip()
+            # Clean the model number by removing unwanted Unicode characters
+            model_number = model_number.strip().replace('\u200e', '') if model_number != "N/A" else "N/A"
+            self.logger.info(f"🆔 Extracted Item Model Number: {model_number}")
+
 
             # Construct Product Details
             product_details = {
@@ -615,6 +751,9 @@ class AmazonProductsSpider(scrapy.Spider):
                 "sold_by": sold_by,
                 "sold_by_link": sold_by_link,
                 "seller_id": seller_id,
+                "sellers": num_sellers,
+                "fulfilled_by": fulfilled_by,
+                "fulfillment_type": fulfillment_type,
                 "brand": brand,
                 "bought_in_past_month": bought_in_past_month,
                 "image_link": image_link,
@@ -629,6 +768,9 @@ class AmazonProductsSpider(scrapy.Spider):
                 "#1_best_seller": str(first_best_seller),
                 "amazons_choice": str(amazon_choice),
                 "limited_time_deal": str(limited_time_deal),
+                "weight": weight,
+                "dimensions": dimensions,
+                "model_number": model_number,
                 "ASIN": asin,
             }
 

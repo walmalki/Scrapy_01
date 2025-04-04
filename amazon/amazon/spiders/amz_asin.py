@@ -1,8 +1,72 @@
 import scrapy
 from scrapy.crawler import CrawlerProcess
+import random
+import requests
 import json
 import os
 from datetime import datetime
+
+# Load credentials from config.json
+with open("config.json", "r") as config_file:
+    config = json.load(config_file)
+
+# Extract credentials
+SCRAPEOPS_API_KEY = config.get("SCRAPEOPS_API_KEY")
+
+if not SCRAPEOPS_API_KEY:
+    raise ValueError("API key is missing from the configuration file.")
+
+# Function to get a random user agent
+def get_scrapeops_fake_user_agent():
+    """Fetch a random user agent from ScrapeOps API"""
+    try:
+        # Make the request to ScrapeOps API with the API key
+        url = f"http://headers.scrapeops.io/v1/user-agents?api_key={SCRAPEOPS_API_KEY}"
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            return response.json().get("result", ["Mozilla/5.0"])[0]  # Default fallback
+    except Exception:
+        return "Mozilla/5.0"
+
+USER_AGENT = get_scrapeops_fake_user_agent()
+
+# Function to get random browser headers
+def get_scrapeops_fake_headers():
+    """Fetch random browser headers from ScrapeOps API with a fallback if none are returned."""
+    try:
+        # Make the request to ScrapeOps API with the API key
+        url = f"http://headers.scrapeops.io/v1/browser-headers?api_key={SCRAPEOPS_API_KEY}"
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            data = response.json()
+            headers = data.get("result")
+            # If headers is a list, try to use the first element if available
+            if isinstance(headers, list):
+                if headers:  # non-empty list
+                    return headers[0]
+                else:
+                    return {"User-Agent": "Mozilla/5.0"}  # fallback
+            # If headers is a dict, return it directly
+            elif isinstance(headers, dict):
+                return headers
+        # If the API call did not return a 200 or headers is not found, return fallback
+        return {"User-Agent": "Mozilla/5.0"}
+    except Exception:
+        return {"User-Agent": "Mozilla/5.0"}
+
+FAKE_HEADERS = get_scrapeops_fake_headers()
+
+# If FAKE_HEADERS is empty or None, use a fallback
+if not FAKE_HEADERS:
+    FAKE_HEADERS = {'User-Agent': 'Mozilla/5.0'}  # Default user-agent header
+
+# Check the structure of the headers
+if isinstance(FAKE_HEADERS, dict):
+    FAKE_HEADERS = {k: str(v) for k, v in FAKE_HEADERS.items()}  # Ensure all values are strings
+else:
+    FAKE_HEADERS = {}
 
 class AmzAsinSpider(scrapy.Spider):
     name = "amz_asin"
@@ -16,14 +80,31 @@ class AmzAsinSpider(scrapy.Spider):
             }
         },
         'LOG_LEVEL': 'INFO',
+        'CONCURRENT_REQUESTS': 1,
+        'DOWNLOAD_DELAY': random.uniform(1, 2),  # Random delay to avoid detection
+        'FEED_EXPORT_ENCODING': 'utf-8',
+        'DEPTH_PRIORITY': 1,  # Give priority to deeper pages (pagination)
+        'SCHEDULER_DISK_QUEUE': 'scrapy.squeues.PickleFifoDiskQueue',
+        'SCHEDULER_MEMORY_QUEUE': 'scrapy.squeues.FifoMemoryQueue',
+        'DEFAULT_REQUEST_HEADERS': {},  # Use ScrapeOps Fake Headers
+        'SCRAPEOPS_API_KEY': SCRAPEOPS_API_KEY,  # Your ScrapeOps API key
+        'SCRAPEOPS_FAKE_USER_AGENT_ENABLED': True,  # Enable fake user agent
+        'SCRAPEOPS_FAKE_HEADERS_ENABLED': True,  # Enable the proxy
+        'SCRAPEOPS_PROXY_ENABLED': True,  # Enable the proxy
+
+        # Enable AutoThrottle settings
+        'AUTOTHROTTLE_ENABLED': True,
+        'AUTOTHROTTLE_START_DELAY': 5,  # Start with 5 seconds delay between requests
+        'AUTOTHROTTLE_MAX_DELAY': 60,  # Max delay between requests is 1 minute
+        'AUTOTHROTTLE_TARGET_CONCURRENCY': 1.0,  # Number of requests to fetch concurrently
+        'AUTOTHROTTLE_DEBUG': False,  # Set to True for debugging AutoThrottle behavior
     }
 
     # Define keywords, pagination limit, and product limit
     keywords = [
-        "sport accessories", "sport tools for men", "sport tools for women",
-        "Wetsuit for Women", "Sport Headbands", "USB Computer Network Adapters",
-        "Electronics", "Beauty", "Facial Rollers", "Luggage Scales", "Night Lights",
-        "Baby Toddler Bibs", "Baby Bibs", "Baby Feeding Bibs", "Baby knee pads"
+        "Pet supply", "Kitchen & Dining", "Home & Kitchen",
+        "Health & Household", "Grocery & Gourmet Food", "Beauty & Personal care",
+        "Baby products"
     ]
     page_limit = 2  # Maximum number of pages to scrape per keyword
     max_products = 10000  # Maximum total number of ASINs to scrape
