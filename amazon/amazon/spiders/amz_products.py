@@ -445,12 +445,18 @@ class AmazonProductsSpider(scrapy.Spider):
 
             # After extracting sold_by and fulfilled_by
             try:
-                # Logic for determining fulfillment type
-                if sold_by != "Amazon" and fulfilled_by == "Amazon":
-                    fulfillment_type = "FBA"  # Fulfilled by Amazon, sold by a third party
-                elif sold_by == "Amazon" and fulfilled_by == "Amazon":
-                    fulfillment_type = "AMZ"  # Sold and fulfilled by Amazon
-                elif sold_by != "Amazon" and fulfilled_by == sold_by:
+                # Check if the availability is "Currently unavailable" and set fulfillment_type to "N/A"
+                if availability.lower() == "currently unavailable":
+                    fulfillment_type = "N/A"
+                # Logic for determining fulfillment type based on sold_by and fulfilled_by
+                elif (sold_by not in ["Amazon", "Amazon US", "Amazon.sa", "Amazon UK", "Amazon UAE", "Amazon Germany"]) and \
+                    (fulfilled_by in ["Amazon", "Amazon US", "Amazon.sa", "Amazon UK", "Amazon UAE", "Amazon Germany"]):
+                    fulfillment_type = "FBA"  # Fulfilled by Amazon or its regional branches, sold by a third party
+                elif (sold_by in ["Amazon", "Amazon US", "Amazon.sa", "Amazon UK", "Amazon UAE", "Amazon Germany"]) and \
+                    (fulfilled_by in ["Amazon", "Amazon US", "Amazon.sa", "Amazon UK", "Amazon UAE", "Amazon Germany"]):
+                    fulfillment_type = "AMZ"  # Sold and fulfilled by Amazon or its regional branches
+                elif (sold_by not in ["Amazon", "Amazon US", "Amazon.sa", "Amazon UK", "Amazon UAE", "Amazon Germany"]) and \
+                    fulfilled_by == sold_by:
                     fulfillment_type = "FBM"  # Fulfilled and sold by the same third-party seller
                 else:
                     fulfillment_type = "N/A"  # Default value if no matching condition
@@ -464,6 +470,7 @@ class AmazonProductsSpider(scrapy.Spider):
 
             # Add the fulfillment_type data to the product details
             product_details["fulfillment_type"] = fulfillment_type
+
 
             # Extract bought_in_past_month and clean the text
             try:
